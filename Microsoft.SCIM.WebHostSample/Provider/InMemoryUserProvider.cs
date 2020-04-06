@@ -9,6 +9,7 @@ namespace Microsoft.SCIM.WebHostSample.Provider
     using System.Threading.Tasks;
     using System.Web.Http;
     using Microsoft.SCIM;
+    using Microsoft.SCIM.WebHostSample.Models;
     using Microsoft.SCIM.WebHostSample.Resources;
 
     public class InMemoryUserProvider : ProviderBase
@@ -33,11 +34,11 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
-            IEnumerable<Core2EnterpriseUser> exisitingUsers = this.storage.Users.Values;
+            IEnumerable<TargetUser> exisitingUsers = this.storage.Users.Values;
             if
             (
                 exisitingUsers.Any(
-                    (Core2EnterpriseUser exisitingUser) =>
+                    (TargetUser exisitingUser) =>
                         string.Equals(exisitingUser.UserName, user.UserName, StringComparison.Ordinal))
             )
             {
@@ -46,7 +47,7 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
             string resourceIdentifier = Guid.NewGuid().ToString();
             resource.Identifier = resourceIdentifier;
-            this.storage.Users.Add(resourceIdentifier, user);
+            this.storage.Users.Add(resourceIdentifier, (TargetUser)user);
 
             return Task.FromResult(resource);
         }
@@ -94,9 +95,9 @@ namespace Microsoft.SCIM.WebHostSample.Provider
             IFilter queryFilter = parameters.AlternateFilters.SingleOrDefault();
             if (queryFilter == null)
             {
-                IEnumerable<Core2EnterpriseUser> allUsers = this.storage.Users.Values;
+                IEnumerable<TargetUser> allUsers = this.storage.Users.Values;
                 results =
-                    allUsers.Select((Core2EnterpriseUser user) => user as Resource).ToArray();
+                    allUsers.Select((TargetUser user) => (Core2EnterpriseUser)user as Resource).ToArray();
 
                 return Task.FromResult(results);
             }
@@ -118,30 +119,30 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
             if (queryFilter.AttributePath.Equals(AttributeNames.UserName))
             {
-                IEnumerable<Core2EnterpriseUser> allUsers = this.storage.Users.Values;
+                IEnumerable<TargetUser> allUsers = this.storage.Users.Values;
                 results =
                     allUsers.Where(
-                        (Core2EnterpriseUser item) =>
+                        (TargetUser item) =>
                            string.Equals(
                                 item.UserName,
                                parameters.AlternateFilters.Single().ComparisonValue,
                                StringComparison.OrdinalIgnoreCase))
-                               .Select((Core2EnterpriseUser user) => user as Resource).ToArray();
+                               .Select((TargetUser user) => (Core2EnterpriseUser)user as Resource).ToArray();
 
                 return Task.FromResult(results);
             }
 
             if (queryFilter.AttributePath.Equals(AttributeNames.ExternalIdentifier))
             {
-                IEnumerable<Core2EnterpriseUser> allUsers = this.storage.Users.Values;
+                IEnumerable<TargetUser> allUsers = this.storage.Users.Values;
                 results =
                     allUsers.Where(
-                        (Core2EnterpriseUser item) =>
+                        (TargetUser item) =>
                            string.Equals(
-                                item.ExternalIdentifier,
+                                item.ExternalId,
                                parameters.AlternateFilters.Single().ComparisonValue,
                                StringComparison.OrdinalIgnoreCase))
-                               .Select((Core2EnterpriseUser user) => user as Resource).ToArray();
+                               .Select((TargetUser user) => (Core2EnterpriseUser)user as Resource).ToArray();
 
                 return Task.FromResult(results);
             }
@@ -163,24 +164,24 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
-            IEnumerable<Core2EnterpriseUser> exisitingUsers = this.storage.Users.Values;
+            IEnumerable<TargetUser> exisitingUsers = this.storage.Users.Values;
             if
             (
                 exisitingUsers.Any(
-                    (Core2EnterpriseUser exisitingUser) =>
+                    (TargetUser exisitingUser) =>
                         string.Equals(exisitingUser.UserName, user.UserName, StringComparison.Ordinal) &&
-                        !string.Equals(exisitingUser.Identifier, user.Identifier, StringComparison.OrdinalIgnoreCase))
+                        !string.Equals(exisitingUser.Identifier.ToString(), user.Identifier, StringComparison.OrdinalIgnoreCase))
             )
             {
                 throw new HttpResponseException(HttpStatusCode.Conflict);
             }
 
-            if (!this.storage.Users.TryGetValue(user.Identifier, out Core2EnterpriseUser _))
+            if (!this.storage.Users.TryGetValue(user.Identifier, out TargetUser _))
             {
                 throw new HttpResponseException(HttpStatusCode.NotFound);
             }
 
-            this.storage.Users[user.Identifier] = user;
+            this.storage.Users[user.Identifier] = (TargetUser)user;
             Resource result = user as Resource;
             return Task.FromResult(result);
         }
@@ -207,9 +208,9 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
             if (this.storage.Users.ContainsKey(identifier))
             {
-                if (this.storage.Users.TryGetValue(identifier, out Core2EnterpriseUser user))
+                if (this.storage.Users.TryGetValue(identifier, out TargetUser user))
                 {
-                    result = user as Resource;
+                    result = (Core2EnterpriseUser)user as Resource;
                     return Task.FromResult(result);
                 }
             }
@@ -239,8 +240,7 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new ArgumentException(SampleServiceResources.ExceptionInvalidPatch);
             }
 
-            PatchRequest2 patchRequest =
-                patch.PatchRequest as PatchRequest2;
+            PatchRequest2 patchRequest = patch.PatchRequest as PatchRequest2;
 
             if (null == patchRequest)
             {
@@ -248,9 +248,12 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new NotSupportedException(unsupportedPatchTypeName);
             }
 
-            if (this.storage.Users.TryGetValue(patch.ResourceIdentifier.Identifier, out Core2EnterpriseUser user))
+            if (this.storage.Users.TryGetValue(patch.ResourceIdentifier.Identifier, out TargetUser user))
             {
-                user.Apply(patchRequest);
+                Core2EnterpriseUser patched = (Core2EnterpriseUser)user;
+                patched.Apply(patchRequest);
+
+                this.storage.Users[patch.ResourceIdentifier.Identifier] = (TargetUser)patched;
             }
             else
             {
