@@ -7,15 +7,15 @@ namespace Microsoft.SCIM.WebHostSample.Provider
     using Microsoft.SCIM;
     using Microsoft.SCIM.WebHostSample.Services;
 
-    public class InMemoryProvider : ProviderBase
+    public class ScimProvider : ProviderBase
     {
         private readonly ProviderBase groupProvider;
         private readonly ProviderBase userProvider;
 
-        public InMemoryProvider(IStorageService storageService)
+        public ScimProvider(IStorageService storageService)
         {
-            this.groupProvider = new InMemoryGroupProvider(storageService);
-            this.userProvider = new InMemoryUserProvider(storageService);
+            this.groupProvider = new ScimGroupProvider(storageService);
+            this.userProvider = new ScimUserProvider(storageService);
         }
 
         public override Task<Resource> CreateAsync(Resource resource, string correlationIdentifier)

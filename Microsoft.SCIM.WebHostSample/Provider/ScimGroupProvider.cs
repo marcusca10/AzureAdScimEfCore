@@ -12,12 +12,12 @@ namespace Microsoft.SCIM.WebHostSample.Provider
     using Microsoft.SCIM.WebHostSample.Resources;
     using Microsoft.SCIM.WebHostSample.Services;
 
-    public class InMemoryGroupProvider : ProviderBase
+    public class ScimGroupProvider : ProviderBase
     {
         private readonly InMemoryStorageService storage;
         private readonly IStorageService _storageService;
 
-        public InMemoryGroupProvider(IStorageService storageService)
+        public ScimGroupProvider(IStorageService storageService)
         {
             //this.storage = InMemoryStorage.Instance;
 
