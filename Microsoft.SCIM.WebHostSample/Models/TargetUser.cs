@@ -7,7 +7,7 @@ namespace Microsoft.SCIM.WebHostSample.Models
 {
     public class TargetUser
     {
-        public Guid Identifier { get; set; } //userPrincipalName -> userName
+        public Guid Identifier { get; set; }
         public string UserName { get; set; } //userPrincipalName -> userName
 
         public bool Active { get; set; } //Switch([IsSoftDeleted], , "False", "True", "True", "False") -> active
