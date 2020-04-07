@@ -22,9 +22,9 @@ namespace Microsoft.SCIM.WebHostSample.Controllers
         
         private const int defaultTokenExpiration = 120;
 
-        public TokenController(IConfiguration Configuration)
+        public TokenController(IConfiguration configuration)
         {
-            _configuration = Configuration;
+            _configuration = configuration;
         }
 
         private string GenerateJSONWebToken()
