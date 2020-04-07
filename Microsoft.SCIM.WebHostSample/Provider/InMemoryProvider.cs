@@ -5,16 +5,17 @@ namespace Microsoft.SCIM.WebHostSample.Provider
     using System;
     using System.Threading.Tasks;
     using Microsoft.SCIM;
+    using Microsoft.SCIM.WebHostSample.Services;
 
     public class InMemoryProvider : ProviderBase
     {
         private readonly ProviderBase groupProvider;
         private readonly ProviderBase userProvider;
 
-        public InMemoryProvider()
+        public InMemoryProvider(IStorageService storageService)
         {
-            this.groupProvider = new InMemoryGroupProvider();
-            this.userProvider = new InMemoryUserProvider();
+            this.groupProvider = new InMemoryGroupProvider(storageService);
+            this.userProvider = new InMemoryUserProvider(storageService);
         }
 
         public override Task<Resource> CreateAsync(Resource resource, string correlationIdentifier)

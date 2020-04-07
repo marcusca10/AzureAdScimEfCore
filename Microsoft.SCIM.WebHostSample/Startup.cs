@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.SCIM.WebHostSample.Provider;
+using Microsoft.SCIM.WebHostSample.Services;
 
 namespace Microsoft.SCIM.WebHostSample
 {
@@ -24,7 +25,7 @@ namespace Microsoft.SCIM.WebHostSample
         private readonly IConfiguration _configuration;
 
         public IMonitor MonitoringBehavior { get; set; }
-        public IProvider ProviderBehavior { get; set; }
+        //public IProvider ProviderBehavior { get; set; }
 
         public Startup(IWebHostEnvironment env, IConfiguration configuration)
         {
@@ -32,7 +33,7 @@ namespace Microsoft.SCIM.WebHostSample
             this._configuration = configuration;
 
             this.MonitoringBehavior = new ConsoleMonitor();
-            this.ProviderBehavior = new InMemoryProvider();
+            //this.ProviderBehavior = new InMemoryProvider();
         }
 
         // This method gets called by the runtime. Use this method to add services to the container.
@@ -98,7 +99,11 @@ namespace Microsoft.SCIM.WebHostSample
 
             services.AddControllers().AddNewtonsoftJson();
 
-            services.AddSingleton(typeof(IProvider), this.ProviderBehavior);
+            // Services registration
+            services.AddSingleton<IStorageService, InMemoryStorageService>();
+            services.AddSingleton<IProvider, InMemoryProvider>();
+
+            //services.AddSingleton(typeof(IProvider), this.ProviderBehavior);
             services.AddSingleton(typeof(IMonitor), this.MonitoringBehavior);
         }
 

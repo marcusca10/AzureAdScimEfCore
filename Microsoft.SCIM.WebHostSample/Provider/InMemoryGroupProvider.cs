@@ -10,14 +10,19 @@ namespace Microsoft.SCIM.WebHostSample.Provider
     using System.Web.Http;
     using Microsoft.SCIM;
     using Microsoft.SCIM.WebHostSample.Resources;
+    using Microsoft.SCIM.WebHostSample.Services;
 
     public class InMemoryGroupProvider : ProviderBase
     {
-        private readonly InMemoryStorage storage;
+        private readonly InMemoryStorageService storage;
+        private readonly IStorageService _storageService;
 
-        public InMemoryGroupProvider()
+        public InMemoryGroupProvider(IStorageService storageService)
         {
-            this.storage = InMemoryStorage.Instance;
+            //this.storage = InMemoryStorage.Instance;
+
+            this._storageService = storageService;
+            this.storage = ((InMemoryStorageService)storageService).Instance;
         }
 
         public override Task<Resource> CreateAsync(Resource resource, string correlationIdentifier)
