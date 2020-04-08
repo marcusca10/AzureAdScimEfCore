@@ -123,7 +123,8 @@ namespace Microsoft.SCIM.WebHostSample.Models
         {
             TargetUser result = new TargetUser();
 
-            result.Identifier = new Guid(user.Identifier);
+            if (user.Identifier != null)
+                result.Identifier = new Guid(user.Identifier);
             result.UserName = user.UserName;
             result.Active = user.Active;
             result.DisplayName = user.DisplayName;

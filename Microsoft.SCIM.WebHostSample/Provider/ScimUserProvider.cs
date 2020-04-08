@@ -11,14 +11,15 @@ namespace Microsoft.SCIM.WebHostSample.Provider
     using Microsoft.SCIM;
     using Microsoft.SCIM.WebHostSample.Models;
     using Microsoft.SCIM.WebHostSample.Resources;
+    using Microsoft.SCIM.WebHostSample.Services;
 
-    public class InMemoryUserProvider : ProviderBase
+    public class ScimUserProvider : ProviderBase
     {
-        private readonly InMemoryStorage storage;
+        private readonly IStorageService _storageService;
 
-        public InMemoryUserProvider()
+        public ScimUserProvider(IStorageService storageService)
         {
-            this.storage = InMemoryStorage.Instance;
+            this._storageService = storageService;
         }
 
         public override Task<Resource> CreateAsync(Resource resource, string correlationIdentifier)
@@ -34,36 +35,42 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
-            IEnumerable<TargetUser> exisitingUsers = this.storage.Users.Values;
-            if
-            (
-                exisitingUsers.Any(
-                    (TargetUser exisitingUser) =>
-                        string.Equals(exisitingUser.UserName, user.UserName, StringComparison.Ordinal))
-            )
+            // call service
+            TargetUser target;
+            try
             {
-                throw new HttpResponseException(HttpStatusCode.Conflict);
+                target = _storageService.CreateUser((TargetUser)user);
+            }
+            catch (Exception err)
+            {
+                switch (err.Message)
+                {
+                    case "Conflict":
+                        throw new HttpResponseException(HttpStatusCode.Conflict);
+                    default:
+                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
+                }
             }
 
-            string resourceIdentifier = Guid.NewGuid().ToString();
-            resource.Identifier = resourceIdentifier;
-            this.storage.Users.Add(resourceIdentifier, (TargetUser)user);
-
-            return Task.FromResult(resource);
+            return Task.FromResult((Core2EnterpriseUser)target as Resource);
         }
 
         public override Task DeleteAsync(IResourceIdentifier resourceIdentifier, string correlationIdentifier)
         {
             if (string.IsNullOrWhiteSpace(resourceIdentifier?.Identifier))
             {
-                throw new HttpResponseException(HttpStatusCode.BadRequest);
+                throw new HttpResponseException(HttpStatusCode.NotFound);
             }
 
-            string identifier = resourceIdentifier.Identifier;
-
-            if (this.storage.Users.ContainsKey(identifier))
+            // call service
+            try
             {
-                this.storage.Users.Remove(identifier);
+                Guid identifier = new Guid(resourceIdentifier.Identifier);
+                _storageService.DeleteUser(identifier);
+            }
+            catch
+            {
+                throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
             return Task.CompletedTask;
@@ -93,9 +100,11 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
             Resource[] results;
             IFilter queryFilter = parameters.AlternateFilters.SingleOrDefault();
+            
+            // get all users if no filter
             if (queryFilter == null)
             {
-                IEnumerable<TargetUser> allUsers = this.storage.Users.Values;
+                IEnumerable<TargetUser> allUsers = this._storageService.QueryUsers();
                 results =
                     allUsers.Select((TargetUser user) => (Core2EnterpriseUser)user as Resource).ToArray();
 
@@ -119,30 +128,16 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
             if (queryFilter.AttributePath.Equals(AttributeNames.UserName))
             {
-                IEnumerable<TargetUser> allUsers = this.storage.Users.Values;
-                results =
-                    allUsers.Where(
-                        (TargetUser item) =>
-                           string.Equals(
-                                item.UserName,
-                               parameters.AlternateFilters.Single().ComparisonValue,
-                               StringComparison.OrdinalIgnoreCase))
-                               .Select((TargetUser user) => (Core2EnterpriseUser)user as Resource).ToArray();
+                IEnumerable<TargetUser> filteredUsers = this._storageService.QueryUsers(userName: parameters.AlternateFilters.Single().ComparisonValue);
+                results = filteredUsers.Select((TargetUser user) => (Core2EnterpriseUser)user as Resource).ToArray();
 
                 return Task.FromResult(results);
             }
 
             if (queryFilter.AttributePath.Equals(AttributeNames.ExternalIdentifier))
             {
-                IEnumerable<TargetUser> allUsers = this.storage.Users.Values;
-                results =
-                    allUsers.Where(
-                        (TargetUser item) =>
-                           string.Equals(
-                                item.ExternalId,
-                               parameters.AlternateFilters.Single().ComparisonValue,
-                               StringComparison.OrdinalIgnoreCase))
-                               .Select((TargetUser user) => (Core2EnterpriseUser)user as Resource).ToArray();
+                IEnumerable<TargetUser> filteredUsers = this._storageService.QueryUsers(externalId: parameters.AlternateFilters.Single().ComparisonValue);
+                results = filteredUsers.Select((TargetUser user) => (Core2EnterpriseUser)user as Resource).ToArray();
 
                 return Task.FromResult(results);
             }
@@ -164,26 +159,26 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
-            IEnumerable<TargetUser> exisitingUsers = this.storage.Users.Values;
-            if
-            (
-                exisitingUsers.Any(
-                    (TargetUser exisitingUser) =>
-                        string.Equals(exisitingUser.UserName, user.UserName, StringComparison.Ordinal) &&
-                        !string.Equals(exisitingUser.Identifier.ToString(), user.Identifier, StringComparison.OrdinalIgnoreCase))
-            )
+            // call service
+            TargetUser target;
+            try
             {
-                throw new HttpResponseException(HttpStatusCode.Conflict);
+                target = _storageService.UpdateUser((TargetUser)resource);
+            }
+            catch (Exception err)
+            {
+                switch (err.Message)
+                {
+                    case "Conflict":
+                        throw new HttpResponseException(HttpStatusCode.Conflict);
+                    case "NotFound":
+                        throw new HttpResponseException(HttpStatusCode.NotFound);
+                    default:
+                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
+                }
             }
 
-            if (!this.storage.Users.TryGetValue(user.Identifier, out TargetUser _))
-            {
-                throw new HttpResponseException(HttpStatusCode.NotFound);
-            }
-
-            this.storage.Users[user.Identifier] = (TargetUser)user;
-            Resource result = user as Resource;
-            return Task.FromResult(result);
+            return Task.FromResult((Core2EnterpriseUser)target as Resource);
         }
 
         public override Task<Resource> RetrieveAsync(IResourceRetrievalParameters parameters, string correlationIdentifier)
@@ -203,19 +198,24 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new ArgumentNullException(nameof(parameters));
             }
 
-            Resource result = null;
-            string identifier = parameters.ResourceIdentifier.Identifier;
-
-            if (this.storage.Users.ContainsKey(identifier))
+            // call service
+            TargetUser result = null;
+            try
             {
-                if (this.storage.Users.TryGetValue(identifier, out TargetUser user))
+                result = _storageService.RetrieveUser(new Guid(parameters.ResourceIdentifier.Identifier));
+            }
+            catch (Exception err)
+            {
+                switch (err.Message)
                 {
-                    result = (Core2EnterpriseUser)user as Resource;
-                    return Task.FromResult(result);
+                    case "NotFound":
+                        throw new HttpResponseException(HttpStatusCode.NotFound);
+                    default:
+                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
                 }
             }
 
-            throw new HttpResponseException(HttpStatusCode.NotFound);
+            return Task.FromResult((Core2EnterpriseUser)result as Resource);
         }
 
         public override Task UpdateAsync(IPatch patch, string correlationIdentifier)
@@ -248,16 +248,31 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new NotSupportedException(unsupportedPatchTypeName);
             }
 
-            if (this.storage.Users.TryGetValue(patch.ResourceIdentifier.Identifier, out TargetUser user))
+            // call service
+            TargetUser target;
+            try
             {
-                Core2EnterpriseUser patched = (Core2EnterpriseUser)user;
+                // get user
+                target = _storageService.RetrieveUser(new Guid(patch.ResourceIdentifier.Identifier));
+
+                // patch user
+                Core2EnterpriseUser patched = (Core2EnterpriseUser)target;
                 patched.Apply(patchRequest);
 
-                this.storage.Users[patch.ResourceIdentifier.Identifier] = (TargetUser)patched;
+                // update user
+                _storageService.UpdateUser((TargetUser)patched);
             }
-            else
+            catch (Exception err)
             {
-                throw new HttpResponseException(HttpStatusCode.NotFound);
+                switch (err.Message)
+                {
+                    case "Conflict":
+                        throw new HttpResponseException(HttpStatusCode.Conflict);
+                    case "NotFound":
+                        throw new HttpResponseException(HttpStatusCode.NotFound);
+                    default:
+                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
+                }
             }
 
             return Task.CompletedTask;
