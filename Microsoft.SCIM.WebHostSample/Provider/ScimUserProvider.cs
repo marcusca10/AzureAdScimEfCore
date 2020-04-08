@@ -275,7 +275,6 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 }
             }
 
-
             return Task.CompletedTask;
         }
     }

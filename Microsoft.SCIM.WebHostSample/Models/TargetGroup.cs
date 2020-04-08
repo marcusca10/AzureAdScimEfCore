@@ -23,19 +23,21 @@ namespace Microsoft.SCIM.WebHostSample.Models
             result.DisplayName = group.DisplayName;
             result.ExternalIdentifier = group.ObjectId;
 
+            List<Member> members = new List<Member>();
             if (group.Members != null)
             {
-                result.Members = new List<Member>();
                 foreach (Guid userId in group.Members)
                 {
-                    result.Members.Append(
+                    members.Add(
                         new Member()
                         {
-                            // TypeName = "",
+                            // currently only users allowed as members
+                            TypeName = "User",
                             Value = userId.ToString()
                         });
                 }
             }
+            result.Members = members;
 
             return result;
         }
@@ -44,20 +46,25 @@ namespace Microsoft.SCIM.WebHostSample.Models
         public static explicit operator TargetGroup(Core2Group group)
         {
             TargetGroup result = new TargetGroup();
-
-            result.Identifier = new Guid(group.Identifier);
+            
+            if (group.Identifier != null)
+                result.Identifier = new Guid(group.Identifier);
             result.DisplayName = group.DisplayName;
             result.ObjectId = group.ExternalIdentifier;
 
 
-            result.Members = new List<Guid>();
+            List<Guid> members = new List<Guid>();
             if (group.Members != null)
             {
                 foreach (Member member in group.Members)
                 {
-                    result.Members.Append(new Guid(member.Value));
+                    //// currently only users allowed as members
+                    //if (member.TypeName != "User")
+                    //    throw new Exception("InvalidMemberType");
+                    members.Add(new Guid(member.Value));
                 }
             }
+            result.Members = members;
 
             return result;
         }

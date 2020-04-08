@@ -9,20 +9,17 @@ namespace Microsoft.SCIM.WebHostSample.Provider
     using System.Threading.Tasks;
     using System.Web.Http;
     using Microsoft.SCIM;
+    using Microsoft.SCIM.WebHostSample.Models;
     using Microsoft.SCIM.WebHostSample.Resources;
     using Microsoft.SCIM.WebHostSample.Services;
 
     public class ScimGroupProvider : ProviderBase
     {
-        private readonly InMemoryStorageService storage;
         private readonly IStorageService _storageService;
 
         public ScimGroupProvider(IStorageService storageService)
         {
-            //this.storage = InMemoryStorage.Instance;
-
             this._storageService = storageService;
-            this.storage = ((InMemoryStorageService)storageService).Instance;
         }
 
         public override Task<Resource> CreateAsync(Resource resource, string correlationIdentifier)
@@ -39,22 +36,26 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
-            IEnumerable<Core2Group> exisitingGroups = this.storage.Groups.Values;
-            if
-            (
-                exisitingGroups.Any(
-                    (Core2Group exisitingGroup) =>
-                        string.Equals(exisitingGroup.DisplayName, group.DisplayName, StringComparison.Ordinal))
-            )
+            // call service
+            TargetGroup target;
+            try
             {
-                throw new HttpResponseException(HttpStatusCode.Conflict);
+                target = _storageService.CreateGroup((TargetGroup)group);
+            }
+            catch (Exception err)
+            {
+                switch (err.Message)
+                {
+                    case "Conflict":
+                        throw new HttpResponseException(HttpStatusCode.Conflict);
+                    case "InvalidMemberType":
+                        throw new HttpResponseException(HttpStatusCode.NotAcceptable);
+                    default:
+                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
+                }
             }
 
-            string resourceIdentifier = Guid.NewGuid().ToString();
-            resource.Identifier = resourceIdentifier;
-            this.storage.Groups.Add(resourceIdentifier, group);
-
-            return Task.FromResult(resource);
+            return Task.FromResult((Core2Group)target as Resource);
         }
 
         public override Task DeleteAsync(IResourceIdentifier resourceIdentifier, string correlationIdentifier)
@@ -64,11 +65,15 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
-            string identifier = resourceIdentifier.Identifier;
-
-            if (this.storage.Groups.ContainsKey(identifier))
+            // call service
+            try
             {
-                this.storage.Groups.Remove(identifier);
+                Guid identifier = new Guid(resourceIdentifier.Identifier);
+                _storageService.DeleteGroup(identifier);
+            }
+            catch
+            {
+                throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
             return Task.CompletedTask;
@@ -98,10 +103,12 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
             Resource[] results;
             IFilter queryFilter = parameters.AlternateFilters.SingleOrDefault();
-            IEnumerable<Core2Group> buffer = Enumerable.Empty<Core2Group>();
+            IEnumerable<TargetGroup> buffer = Enumerable.Empty<TargetGroup>();
+
+            // get all users if no filter
             if (queryFilter == null)
             {
-                buffer = this.storage.Groups.Values;
+                buffer = this._storageService.QueryGroups();
             }
             else
             {
@@ -122,14 +129,7 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
                 if (queryFilter.AttributePath.Equals(AttributeNames.DisplayName))
                 {
-                    buffer =
-                        this.storage.Groups.Values
-                        .Where(
-                            (Core2Group item) =>
-                               string.Equals(
-                                   item.DisplayName,
-                                   parameters.AlternateFilters.Single().ComparisonValue,
-                                   StringComparison.OrdinalIgnoreCase));
+                    buffer = this._storageService.QueryGroups(displayName: parameters.AlternateFilters.Single().ComparisonValue);
                 }
                 else
                 {
@@ -139,17 +139,9 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
             results =
                 buffer
-                .Select((Core2Group item) =>
+                .Select((TargetGroup item) =>
                  {
-                     Core2Group bufferItem =
-                     new Core2Group
-                     {
-                         DisplayName = item.DisplayName,
-                         ExternalIdentifier = item.ExternalIdentifier,
-                         Identifier = item.Identifier,
-                         Members = item.Members,
-                         Metadata = item.Metadata
-                     };
+                     Core2Group bufferItem = (Core2Group)item;
 
                      if (parameters?.ExcludedAttributePaths?.Any(
                              (string excludedAttributes) =>
@@ -161,8 +153,7 @@ namespace Microsoft.SCIM.WebHostSample.Provider
 
                      return bufferItem;
                  })
-                .Select((Core2Group item) => item as Resource)
-                .ToArray();
+                .Select((Core2Group item) => item as Resource).ToArray();
 
             return Task.FromResult(results);
         }
@@ -181,26 +172,26 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new HttpResponseException(HttpStatusCode.BadRequest);
             }
 
-            IEnumerable<Core2Group> exisitingGroups = this.storage.Groups.Values;
-            if
-            (
-                exisitingGroups.Any(
-                    (Core2Group exisitingUser) =>
-                        string.Equals(exisitingUser.DisplayName, group.DisplayName, StringComparison.Ordinal) &&
-                        !string.Equals(exisitingUser.Identifier, group.Identifier, StringComparison.OrdinalIgnoreCase))
-            )
+            // call service
+            TargetGroup target;
+            try
             {
-                throw new HttpResponseException(HttpStatusCode.Conflict);
+                target = _storageService.UpdateGroup((TargetGroup)resource);
+            }
+            catch (Exception err)
+            {
+                switch (err.Message)
+                {
+                    case "Conflict":
+                        throw new HttpResponseException(HttpStatusCode.Conflict);
+                    case "NotFound":
+                        throw new HttpResponseException(HttpStatusCode.NotFound);
+                    default:
+                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
+                }
             }
 
-            if (!this.storage.Groups.TryGetValue(group.Identifier, out Core2Group _))
-            {
-                throw new HttpResponseException(HttpStatusCode.NotFound);
-            }
-
-            this.storage.Groups[group.Identifier] = group;
-            Resource result = group as Resource;
-            return Task.FromResult(result);
+            return Task.FromResult((Core2Group)target as Resource);
         }
 
         public override Task<Resource> RetrieveAsync(IResourceRetrievalParameters parameters, string correlationIdentifier)
@@ -220,18 +211,24 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new ArgumentNullException(nameof(parameters));
             }
 
-            string identifier = parameters.ResourceIdentifier.Identifier;
-
-            if (this.storage.Groups.ContainsKey(identifier))
+            // call service
+            TargetGroup result = null;
+            try
             {
-                if (this.storage.Groups.TryGetValue(identifier, out Core2Group group))
+                result = _storageService.RetrieveGroup(new Guid(parameters.ResourceIdentifier.Identifier));
+            }
+            catch (Exception err)
+            {
+                switch (err.Message)
                 {
-                    Resource result = group as Resource;
-                    return Task.FromResult(result);
+                    case "NotFound":
+                        throw new HttpResponseException(HttpStatusCode.NotFound);
+                    default:
+                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
                 }
             }
 
-            throw new HttpResponseException(HttpStatusCode.NotFound);
+            return Task.FromResult((Core2Group)result as Resource);
         }
 
         public override Task UpdateAsync(IPatch patch, string correlationIdentifier)
@@ -256,8 +253,7 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new ArgumentException(SampleServiceResources.ExceptionInvalidPatch);
             }
 
-            PatchRequest2 patchRequest =
-                patch.PatchRequest as PatchRequest2;
+            PatchRequest2 patchRequest = patch.PatchRequest as PatchRequest2;
 
             if (null == patchRequest)
             {
@@ -265,13 +261,33 @@ namespace Microsoft.SCIM.WebHostSample.Provider
                 throw new NotSupportedException(unsupportedPatchTypeName);
             }
 
-            if (this.storage.Groups.TryGetValue(patch.ResourceIdentifier.Identifier, out Core2Group group))
+            // call service
+            TargetGroup target;
+            try
             {
-                group.Apply(patchRequest);
+                // get group
+                target = _storageService.RetrieveGroup(new Guid(patch.ResourceIdentifier.Identifier));
+
+                // patch group
+                Core2Group patched = (Core2Group)target;
+                patched.Apply(patchRequest);
+
+                // update user
+                _storageService.UpdateGroup((TargetGroup)patched);
             }
-            else
+            catch (Exception err)
             {
-                throw new HttpResponseException(HttpStatusCode.NotFound);
+                switch (err.Message)
+                {
+                    case "Conflict":
+                        throw new HttpResponseException(HttpStatusCode.Conflict);
+                    case "NotFound":
+                        throw new HttpResponseException(HttpStatusCode.NotFound);
+                    case "InvalidMemberType":
+                        throw new HttpResponseException(HttpStatusCode.NotAcceptable);
+                    default:
+                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
+                }
             }
 
             return Task.CompletedTask;
